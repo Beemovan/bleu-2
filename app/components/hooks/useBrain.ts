@@ -1,22 +1,29 @@
+import IntelligenceMatrix from "@/app/utilities/IntelligenceMatrix";
+import {
+  Action,
+  Obj,
+  ObjChangeMap,
+  RewardOutcome,
+  ActionOutcome,
+  RewardMechanism,
+} from "@/app/utilities/Types";
 import { useMemo } from "react";
-
-const ACTIONS = ["move-left", "move-right"] as const;
-
-type Action = (typeof ACTIONS)[number];
-
-type Object = {
-  x: number;
-  y: number;
-};
-
-type RewardMechanism = { evaluate: () => number };
 
 class ElController {
   el;
   pos = [0, 0];
 
-  constructor(el: HTMLDivElement) {
+  constructor(el: HTMLDivElement, sandbox?: Sandbox) {
     this.el = el;
+
+    if (sandbox) {
+      const elBounds = el.getBoundingClientRect();
+      const elSize = Math.floor(elBounds.width / 2);
+      this.pos[0] = Math.floor(sandbox.getBounds().width / 2) - elSize;
+      this.pos[1] = Math.floor(sandbox.getBounds().height / 2) - elSize;
+      this.move("x");
+      this.move("y");
+    }
   }
 
   moveLeft() {
@@ -27,6 +34,16 @@ class ElController {
   moveRight() {
     this.pos[0]++;
     this.move("x");
+  }
+
+  moveUp() {
+    this.pos[1]--;
+    this.move("y");
+  }
+
+  moveDown() {
+    this.pos[1]++;
+    this.move("y");
   }
 
   move(dir: "x" | "y") {
@@ -40,8 +57,16 @@ class ElController {
     switch (action) {
       case "move-left":
         this.moveLeft();
+        break;
       case "move-right":
         this.moveRight();
+        break;
+      case "move-up":
+        this.moveUp();
+        break;
+      case "move-down":
+        this.moveDown();
+        break;
       default:
         break;
     }
@@ -50,7 +75,7 @@ class ElController {
 
 class Sandbox {
   el;
-  objects: Array<Object> = [];
+  objects: Array<Obj> = [];
 
   constructor() {
     this.el = document.getElementById("sandbox") as HTMLElement;
@@ -64,30 +89,88 @@ class Sandbox {
         })
       : [];
   }
+
+  getBounds() {
+    return this.el.getBoundingClientRect();
+  }
 }
 
-const calcDiff = (o1: Object, o2: Object) =>
-  (Object.keys(o1) as Array<keyof typeof o1>).reduce((diff, key) => {
+const reduceObjectsToChanges = (o1: Obj, o2: Obj) => {
+  (Object.keys(o2) as Array<keyof typeof o2>).reduce((diff, key) => {
     if (o2[key] === o1[key]) return diff;
     return {
       ...diff,
-      [key]: o1[key],
+      [key]: o2[key],
     };
   }, {});
 
-function getObjectChanges(objects: Array<Object>, newObjects: Array<Object>) {
+  const prev: Partial<Obj> = {};
+  const cur: Partial<Obj> = {};
+
+  (Object.keys(o2) as Array<keyof typeof o2>).forEach((key) => {
+    if (o2[key] === o1[key]) return;
+    prev[key] = o1[key];
+    cur[key] = o2[key];
+  });
+
+  return { prev, cur };
+};
+
+function getObjectChanges(objects: Array<Obj>, newObjects: Array<Obj>) {
   return objects.reduce((changeMap, obj, idx) => {
-    const changes = calcDiff(obj, newObjects[idx]);
-    if (Object.keys(changes).length) changeMap[idx] = changes;
+    const objChange = reduceObjectsToChanges(obj, newObjects[idx]);
+    if (Object.keys(objChange.cur).length) changeMap[idx] = objChange;
     return changeMap;
-  }, {} as Record<number, Partial<Object>>);
+  }, {} as ObjChangeMap);
+}
+
+class Memory {
+  MAX_MEMORY_LEN = 1000;
+  rewardOutcomes: Array<RewardOutcome>;
+  actionOutcomes: Array<ActionOutcome>;
+  intelligenceMatrix: IntelligenceMatrix;
+  memoriesSinceAnalysis = 0;
+
+  constructor() {
+    this.actionOutcomes = [];
+    this.rewardOutcomes = [];
+    this.intelligenceMatrix = new IntelligenceMatrix();
+  }
+
+  remember(action: Action, objChangeMap: ObjChangeMap, rewards: Array<number>) {
+    if (this.actionOutcomes.length >= this.MAX_MEMORY_LEN)
+      this.actionOutcomes.shift();
+    if (this.rewardOutcomes.length >= this.MAX_MEMORY_LEN)
+      this.rewardOutcomes.shift();
+
+    this.actionOutcomes.push({
+      cause: action,
+      effect: objChangeMap,
+    });
+    this.rewardOutcomes.push({
+      cause: objChangeMap,
+      effect: rewards,
+    });
+
+    if (++this.memoriesSinceAnalysis >= 200) {
+      this.memoriesSinceAnalysis = 0;
+      this.intelligenceMatrix.analyzeOutcomes(
+        this.rewardOutcomes,
+        this.actionOutcomes
+      );
+    }
+  }
+
+  selectAction(objects: Array<Obj>) {
+    return this.intelligenceMatrix.selectAction(objects);
+  }
 }
 
 class Brain {
   controller;
   world;
   rewardMechanisms;
-  //   rewards;
+  memory;
 
   constructor(
     controller: ElController,
@@ -97,7 +180,7 @@ class Brain {
     this.controller = controller;
     this.world = sandbox;
     this.rewardMechanisms = rewardMechanisms;
-    // this.rewards = new Array<number>(rewardMechanisms.length).fill(0);
+    this.memory = new Memory();
   }
 
   observeWorld() {
@@ -105,20 +188,18 @@ class Brain {
     return this.world.objects;
   }
 
-  performAction(objects: Array<Object>) {
-    const action = ACTIONS[1];
+  performAction(objects: Array<Obj>) {
+    const action = this.memory.selectAction(objects);
     this.controller.performAction(action);
     return action;
   }
 
-  processOutcome(
-    objects: Array<Object>,
-    newObjects: Array<Object>,
-    action: Action
-  ) {
-    const changes = getObjectChanges(objects, newObjects);
-    console.log(changes);
-    const rewards = this.rewardMechanisms.map(({ evaluate }) => evaluate());
+  processOutcome(objects: Array<Obj>, newObjects: Array<Obj>, action: Action) {
+    const objChangeMap = getObjectChanges(objects, newObjects);
+    const rewards = this.rewardMechanisms.map(({ evaluate }) =>
+      evaluate(objChangeMap)
+    );
+    this.memory.remember(action, objChangeMap, rewards);
   }
 
   think() {
@@ -129,12 +210,28 @@ class Brain {
   }
 }
 
+const seedRewardMechanisms = (): Array<RewardMechanism> => {
+  return [
+    {
+      evaluate: (objChangeMap: ObjChangeMap) => {
+        const x = objChangeMap["0"]?.cur?.x;
+        if (x === undefined) return -1;
+        const xGoal = 200;
+        const maxScore = 100;
+        const delta = Math.abs(xGoal - x) / 5;
+        return Math.max(maxScore - delta, 0);
+      },
+    },
+  ];
+};
+
 export const useBrain = (el: HTMLDivElement | null) => {
   const brain = useMemo(() => {
     if (!el) return null;
-    const elController = new ElController(el);
     const sandbox = new Sandbox();
-    return new Brain(elController, sandbox);
+    const elController = new ElController(el, sandbox);
+    const rewardMechanisms = seedRewardMechanisms();
+    return new Brain(elController, sandbox, rewardMechanisms);
   }, [el]);
 
   return brain;
