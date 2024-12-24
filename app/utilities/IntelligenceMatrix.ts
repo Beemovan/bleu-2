@@ -1,14 +1,21 @@
+import DBInstance from "@/app/utilities/db-instance";
 import { RewardOutcome, ActionOutcome, Obj, ACTIONS } from "./Types";
 
 // INPUT (state of the world) -> OUTPUT (action to maximize rewards)
 
 class IntelligenceMatrix {
-  constructor() {}
+  db;
 
-  analyzeOutcomes(
+  constructor() {
+    this.db = DBInstance.getDBInstance();
+  }
+
+  async analyzeOutcomes(
     rewardOutcomes: Array<RewardOutcome>,
     actionOutcomes: Array<ActionOutcome>
   ) {
+    await this.db.prune();
+
     console.log(rewardOutcomes);
     console.log(actionOutcomes);
   }
