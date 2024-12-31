@@ -1,23 +1,37 @@
-import DBInstance from "@/app/utilities/db-instance";
-import { RewardOutcome, ActionOutcome, Obj, ACTIONS } from "./Types";
+import { ACTIONS, Obj, Outcome } from "./Types";
 
-// INPUT (state of the world) -> OUTPUT (action to maximize rewards)
+// INPUT (state of the world + action) -> OUTPUT (next state of the world)
 
-class IntelligenceMatrix {
-  db;
+// INPUT (state of the world) -> OUTPUT (action)
+
+type Connection = { strength: number; parent: Node; child: Node };
+
+type Region = {
+  name: string;
+  nodes: Array<Node>;
+  inputRange: [number, number];
+};
+
+class Node {
+  bias: number;
+  connections: Array<Connection>;
 
   constructor() {
-    this.db = DBInstance.getDBInstance();
+    this.bias = 3;
+    this.connections = [];
   }
+}
 
-  async analyzeOutcomes(
-    rewardOutcomes: Array<RewardOutcome>,
-    actionOutcomes: Array<ActionOutcome>
-  ) {
-    await this.db.prune();
+class IntelligenceMatrix {
+  allNodes: Array<Node> = [];
+  inputLayer: Array<Node> = [];
+  outputLayer: Array<Node> = [];
+  regions: Array<Region> = [];
 
-    console.log(rewardOutcomes);
-    console.log(actionOutcomes);
+  constructor(regions: Array<{ name: string; len: number }>) {}
+
+  async analyzeOutcome(outcome: Outcome) {
+    const { action, worldState, rewards } = outcome;
   }
 
   selectAction(objects: Array<Obj>) {

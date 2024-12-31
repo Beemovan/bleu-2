@@ -25,11 +25,8 @@ export type RewardMechanism = {
   evaluate: (objChangeMap: ObjChangeMap) => number;
 };
 
-export type Outcome<b, a> = {
-  cause: b;
-  effect: a;
+export type Outcome = {
+  action: Action;
+  worldState: ObjChangeMap;
+  rewards: Array<number>;
 };
-
-export type ActionOutcome = Outcome<Action, ObjChangeMap>;
-
-export type RewardOutcome = Outcome<ObjChangeMap, Array<number>>;

@@ -3,8 +3,7 @@ import {
   Action,
   Obj,
   ObjChangeMap,
-  RewardOutcome,
-  ActionOutcome,
+  Outcome,
   RewardMechanism,
 } from "@/app/utilities/Types";
 import { useMemo } from "react";
@@ -126,39 +125,38 @@ function getObjectChanges(objects: Array<Obj>, newObjects: Array<Obj>) {
 
 class Memory {
   MAX_MEMORY_LEN = 1000;
-  rewardOutcomes: Array<RewardOutcome>;
-  actionOutcomes: Array<ActionOutcome>;
+  outcomes: Array<Outcome>;
   intelligenceMatrix: IntelligenceMatrix;
   memoriesSinceAnalysis = 0;
 
   constructor() {
-    this.actionOutcomes = [];
-    this.rewardOutcomes = [];
+    this.outcomes = [];
     this.intelligenceMatrix = new IntelligenceMatrix();
   }
 
-  remember(action: Action, objChangeMap: ObjChangeMap, rewards: Array<number>) {
-    if (this.actionOutcomes.length >= this.MAX_MEMORY_LEN)
-      this.actionOutcomes.shift();
-    if (this.rewardOutcomes.length >= this.MAX_MEMORY_LEN)
-      this.rewardOutcomes.shift();
+  async remember(
+    action: Action,
+    objChangeMap: ObjChangeMap,
+    rewards: Array<number>
+  ) {
+    if (this.outcomes.length >= this.MAX_MEMORY_LEN) this.outcomes.shift();
 
-    this.actionOutcomes.push({
-      cause: action,
-      effect: objChangeMap,
-    });
-    this.rewardOutcomes.push({
-      cause: objChangeMap,
-      effect: rewards,
-    });
+    const outcome = {
+      action,
+      worldState: objChangeMap,
+      rewards,
+    };
 
-    if (++this.memoriesSinceAnalysis >= 200) {
-      this.memoriesSinceAnalysis = 0;
-      this.intelligenceMatrix.analyzeOutcomes(
-        this.rewardOutcomes,
-        this.actionOutcomes
-      );
-    }
+    this.outcomes.push(outcome);
+
+    await this.intelligenceMatrix.analyzeOutcome(outcome);
+
+    // if (++this.memoriesSinceAnalysis >= 5) {
+    //   this.memoriesSinceAnalysis = 0;
+    //   await this.intelligenceMatrix.analyzeOutcomes(
+    //     this.outcomes,
+    //   );
+    // }
   }
 
   selectAction(objects: Array<Obj>) {
